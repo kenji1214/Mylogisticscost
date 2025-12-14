@@ -86,10 +86,14 @@ export default function App() {
   }
   
   function logout() {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("id_token");
+  
     const url =
       `${COGNITO_DOMAIN}/logout` +
       `?client_id=${CLIENT_ID}` +
       `&logout_uri=${encodeURIComponent(REDIRECT_URI)}`;
+  
     window.location.href = url;
   }
   
