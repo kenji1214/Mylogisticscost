@@ -19,3 +19,8 @@ backend/.pytest_cache/
 .env
 **/.env
 .env.*
+
+
+# LocalStack (local data)
+backend/localstack/
+**/localstack/cache/
