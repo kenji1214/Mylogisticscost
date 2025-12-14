@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { listCosts, createCost, deleteCost } from "./api";
+import { listCosts, createCost, updateCost, deleteCost } from "./api";
+import "./App.css";
 
 /* =======================
-   Cognito configuration
-======================= */
+   Cognito config
+   ======================= */
 const COGNITO_DOMAIN =
   "https://eu-west-1rmy8gkhyn.auth.eu-west-1.amazoncognito.com";
 const CLIENT_ID = "oj5ptoit1vb9q8b8roeotd9d3";
 const REDIRECT_URI = "http://localhost:5173";
 
-/* =======================
-   Token exchange
-======================= */
 async function exchangeCodeForTokens(code) {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -26,11 +24,7 @@ async function exchangeCodeForTokens(code) {
     body,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text);
-  }
-
+  if (!res.ok) throw new Error("Token exchange failed");
   return res.json();
 }
 
@@ -38,57 +32,60 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
     !!localStorage.getItem("access_token")
   );
+
   const [costs, setCosts] = useState([]);
+  const [error, setError] = useState("");
+
+  /* Create */
   const [costId, setCostId] = useState("");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState("");
 
-  /* =======================
-     Handle Cognito redirect
-  ======================= */
+  /* Edit */
+  const [editingId, setEditingId] = useState(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+
+  /* Login redirect */
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-  
-    // 🚨 prevent double execution
-    if (!code || localStorage.getItem("access_token")) return;
-  
-    async function loginFlow() {
-      try {
-        const tokens = await exchangeCodeForTokens(code);
-  
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (!code) return;
+
+    exchangeCodeForTokens(code)
+      .then(tokens => {
         localStorage.setItem("access_token", tokens.access_token);
         localStorage.setItem("id_token", tokens.id_token);
-  
-        window.history.replaceState({}, document.title, "/");
         setIsAuthenticated(true);
-      } catch (e) {
-        console.error("OAuth failed", e);
-        setError("Login failed");
-      }
-    }
-  
-    loginFlow();
+        window.history.replaceState({}, "", "/");
+      })
+      .catch(() => setError("Login failed"));
   }, []);
 
-  /* =======================
-     API
-  ======================= */
   async function refresh() {
     try {
-      setError("");
       setCosts(await listCosts());
-    } catch (e) {
-      console.error(e);
+    } catch {
       setError("Failed to load costs");
     }
   }
 
   useEffect(() => {
-    if (!isAuthenticated) return;
-    refresh();
+    if (isAuthenticated) refresh();
   }, [isAuthenticated]);
+
+  function login() {
+    window.location.href =
+      `${COGNITO_DOMAIN}/login` +
+      `?client_id=${CLIENT_ID}` +
+      `&response_type=code` +
+      `&scope=openid+email+profile` +
+      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+  }
+
+  function logout() {
+    localStorage.clear();
+    setIsAuthenticated(false);
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -103,74 +100,94 @@ export default function App() {
     refresh();
   }
 
-  function login() {
-    window.location.href =
-      `${COGNITO_DOMAIN}/login` +
-      `?client_id=${CLIENT_ID}` +
-      `&response_type=code` +
-      `&scope=openid+email+profile` +
-      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-  }
-
-  function logout() {
-    localStorage.clear();
-    setIsAuthenticated(false);
-    window.location.href =
-      `${COGNITO_DOMAIN}/logout` +
-      `?client_id=${CLIENT_ID}` +
-      `&logout_uri=${encodeURIComponent(REDIRECT_URI)}`;
-  }
-
-  const canSubmit = useMemo(
-    () => costId && amount !== "",
-    [costId, amount]
-  );
+  const canSubmit = useMemo(() => costId && amount, [costId, amount]);
 
   return (
-    <div style={{ padding: 40 }}>
-      <h1>Logistics Cost</h1>
+    <>
+      <div className="header">
+        <h1>Logistics Cost Management</h1>
+        {isAuthenticated ? (
+          <button className="button link" onClick={logout}>Logout</button>
+        ) : (
+          <button className="button primary" onClick={login}>Login</button>
+        )}
+      </div>
 
-      {isAuthenticated ? (
-        <button onClick={logout}>Logout</button>
-      ) : (
-        <button onClick={login}>Login</button>
-      )}
+      <div className="container">
+        {error && <div className="error">{error}</div>}
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+        {isAuthenticated && (
+          <>
+            {/* Create */}
+            <div className="card">
+              <form className="form-grid" onSubmit={submit}>
+                <input placeholder="Cost ID" value={costId} onChange={e => setCostId(e.target.value)} />
+                <input placeholder="Amount" value={amount} onChange={e => setAmount(e.target.value)} />
+                <input placeholder="Description" value={description} onChange={e => setDescription(e.target.value)} />
+                <button className="button primary" disabled={!canSubmit}>Add</button>
+              </form>
+            </div>
 
-      {isAuthenticated && (
-        <>
-          <form onSubmit={submit}>
-            <input
-              placeholder="CostID"
-              value={costId}
-              onChange={(e) => setCostId(e.target.value)}
-            />
-            <input
-              placeholder="Amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            <input
-              placeholder="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-            <button disabled={!canSubmit}>Add</button>
-          </form>
+            {/* List */}
+            <div className="card list">
+              {costs.map(c => (
+                <div className="row" key={c.CostID}>
+                  <div>{c.CostID}</div>
 
-          <ul>
-            {costs.map((c) => (
-              <li key={c.CostID}>
-                {c.CostID} — {c.Amount} — {c.Description}
-                <button onClick={() => deleteCost(c.CostID).then(refresh)}>
-                  ❌
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
+                  {editingId === c.CostID ? (
+                    <>
+                      <input value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+                      <input value={editDescription} onChange={e => setEditDescription(e.target.value)} />
+                      <div className="actions">
+                        <button
+                          className="button primary"
+                          onClick={() => {
+                            updateCost(c.CostID, {
+                              CostID: c.CostID,
+                              Amount: Number(editAmount),
+                              Description: editDescription,
+                            });
+                            setEditingId(null);
+                            refresh();
+                          }}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>{c.Amount}</div>
+                      <div>{c.Description}</div>
+                      <div className="actions">
+                        <button
+                          className="button link"
+                          onClick={() => {
+                            setEditingId(c.CostID);
+                            setEditAmount(c.Amount);
+                            setEditDescription(c.Description);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="button danger"
+                          onClick={() => {
+                            deleteCost(c.CostID);
+                            refresh();
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
