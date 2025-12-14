@@ -8,7 +8,7 @@ import "./App.css";
 const COGNITO_DOMAIN =
   "https://eu-west-1rmy8gkhyn.auth.eu-west-1.amazoncognito.com";
 const CLIENT_ID = "oj5ptoit1vb9q8b8roeotd9d3";
-const REDIRECT_URI = "http://localhost:5173";
+const REDIRECT_URI = window.location.origin;
 
 async function exchangeCodeForTokens(code) {
   const body = new URLSearchParams({
@@ -73,20 +73,26 @@ export default function App() {
     if (isAuthenticated) refresh();
   }, [isAuthenticated]);
 
+  const REDIRECT_URI = window.location.origin;
+
   function login() {
-    window.location.href =
+    const url =
       `${COGNITO_DOMAIN}/login` +
       `?client_id=${CLIENT_ID}` +
       `&response_type=code` +
       `&scope=openid+email+profile` +
       `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+    window.location.href = url;
   }
-
+  
   function logout() {
-    localStorage.clear();
-    setIsAuthenticated(false);
+    const url =
+      `${COGNITO_DOMAIN}/logout` +
+      `?client_id=${CLIENT_ID}` +
+      `&logout_uri=${encodeURIComponent(REDIRECT_URI)}`;
+    window.location.href = url;
   }
-
+  
   async function submit(e) {
     e.preventDefault();
     await createCost({
